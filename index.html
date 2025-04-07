@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cheque Printing Software - Nepali Banks</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
         body {
             background: linear-gradient(to right, #e0eafc, #cfdef3);
@@ -49,51 +51,50 @@
         }
 
         .cheque {
-            width: 90%;
-            max-width: 700px;
-            height: 250px;
-            border: 2px solid #1e3a8a;
-            padding: 20px;
-            background: linear-gradient(135deg, #f5f7fa, #d1d8e0);
-            box-shadow: 5px 5px 15px rgba(0, 0, 0, 0.3);
+            width: 8.5in; /* Nepali cheque width */
+            height: 3.5in; /* Nepali cheque height */
+            padding: 10px;
+            background: #fff; /* Matches pre-printed cheque */
             font-family: 'Courier New', Courier, monospace;
             position: relative;
         }
 
         .cheque-date {
             position: absolute;
-            top: 20px;
-            right: 20px;
-            font-size: 16px;
+            top: 0.5in;
+            right: 0.5in;
+            font-size: 14px;
         }
 
-        .payee, .amount-words, .amount-box {
-            font-size: 16px;
-            margin: 15px 0;
-        }
-
-        .amount-box {
-            border: 1px solid #000;
-            padding: 5px 10px;
-            display: inline-block;
-            width: 150px;
-            text-align: center;
+        .cheque-payee {
             position: absolute;
-            bottom: 60px;
-            right: 20px;
+            top: 1.2in;
+            left: 0.5in;
+            font-size: 14px;
+            width: 6in;
         }
 
-        .signature {
+        .cheque-amount-words {
             position: absolute;
-            bottom: 20px;
-            right: 20px;
-            font-size: 16px;
+            top: 1.8in;
+            left: 0.5in;
+            font-size: 14px;
+            width: 6in;
+        }
+
+        .cheque-amount {
+            position: absolute;
+            top: 2.2in;
+            right: 0.5in;
+            font-size: 14px;
+            width: 1.5in;
+            text-align: right;
         }
 
         @media (max-width: 576px) {
             .cheque {
+                width: 100%;
                 height: auto;
-                padding: 15px;
             }
             .btn {
                 width: 100%;
@@ -102,7 +103,7 @@
             .table {
                 font-size: 14px;
             }
-            .cheque-date, .amount-box, .signature {
+            .cheque-date, .cheque-payee, .cheque-amount-words, .cheque-amount {
                 position: static;
                 margin: 10px 0;
             }
@@ -142,6 +143,10 @@
                         <option value="">Select Bank</option>
                     </select>
                 </div>
+                <div class="mb-3" id="bankBalanceDiv" style="display: none;">
+                    <label for="bankBalance" class="form-label">Bank Balance (NPR)</label>
+                    <input type="number" class="form-control" id="bankBalance" step="0.01">
+                </div>
                 <div class="mb-3">
                     <label for="payee" class="form-label">Payee Name</label>
                     <input type="text" class="form-control" id="payee" required>
@@ -175,7 +180,9 @@
                     <input type="text" class="form-control" id="chequeNo" placeholder="e.g., 000123">
                 </div>
                 <button type="submit" class="btn btn-primary">Add Cheque</button>
-                <button type="button" class="btn btn-success" id="printBtn">Print Selected Cheque</button>
+                <button type="button" class="btn btn-success" id="printSelectedBtn">Print Selected Cheques</button>
+                <button type="button" class="btn btn-info" id="exportPdfBtn">Export to PDF</button>
+                <button type="button" class="btn btn-info" id="exportExcelBtn">Export to Excel</button>
             </form>
         </div>
 
@@ -186,6 +193,7 @@
                 <table class="table table-striped table-hover">
                     <thead>
                         <tr>
+                            <th>Select</th>
                             <th>#</th>
                             <th>Bank</th>
                             <th>Payee</th>
@@ -204,22 +212,32 @@
         <!-- Printable Cheque -->
         <div id="printableCheque" class="cheque-print d-none">
             <div class="cheque">
-                <div class="cheque-date">Date: <span id="chequeDateBS"></span></div>
-                <div class="payee" id="chequePayee"></div>
-                <div class="amount-words">Rupees: <span id="chequeAmountWords"></span></div>
-                <div class="amount-box">NPR <span id="chequeAmount"></span></div>
-                <div class="signature">Signature: ____________________</div>
+                <span class="cheque-date" id="chequeDateBS"></span>
+                <span class="cheque-payee" id="chequePayee"></span>
+                <span class="cheque-amount-words" id="chequeAmountWords"></span>
+                <span class="cheque-amount" id="chequeAmount"></span>
             </div>
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         let cheques = [];
         let editIndex = null;
         let banks = new Set();
+        let bankBalances = {};
 
-        // Number to Words Conversion (Full Nepali Style)
+        // Simulated BS Calendar Dataset (2081–2085)
+        const bsCalendar = {
+            2081: [30, 31, 32, 31, 31, 30, 29, 30, 29, 30, 30, 30],
+            2082: [31, 31, 32, 31, 31, 30, 29, 30, 29, 30, 30, 30],
+            2083: [31, 32, 31, 32, 31, 30, 29, 30, 29, 30, 30, 30],
+            2084: [31, 32, 31, 32, 31, 30, 29, 30, 29, 30, 30, 30],
+            2085: [30, 32, 31, 32, 31, 30, 29, 30, 29, 30, 30, 30]
+        };
+        const referenceAD = new Date('1970-04-14'); // AD: April 14, 1970
+        const referenceBS = { year: 2027, month: 1, day: 1 }; // BS: Baisakh 1, 2027
+
+        // Number to Words Conversion
         function numberToWords(num) {
             const units = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
             const teens = ['Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
@@ -262,25 +280,18 @@
         }
 
         // Precise AD to BS Conversion
-        const bsMonths = [
-            30, 31, 31, 32, 31, 31, 30, 29, 30, 29, 30, 30 // Approx. days for BS year 2080–2085
-        ];
-        const referenceAD = new Date('1970-04-14'); // AD reference: April 14, 1970
-        const referenceBS = { year: 2027, month: 1, day: 1 }; // BS reference: Baisakh 1, 2027
-
         function convertADtoBS(adDate) {
             const ad = new Date(adDate);
             const diffMs = ad - referenceAD;
-            const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+            let remainingDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
 
             let bsYear = referenceBS.year;
-            let bsMonth = referenceBS.month - 1; // 0-based index
+            let bsMonth = referenceBS.month - 1; // 0-based
             let bsDay = referenceBS.day;
-            let remainingDays = diffDays;
 
-            // Calculate years
-            while (remainingDays >= 365) {
-                const daysInYear = bsMonths.reduce((a, b) => a + b, 0);
+            while (remainingDays > 0) {
+                const yearDays = bsCalendar[bsYear] || bsCalendar[2082]; // Default to 2082 if year not in dataset
+                const daysInYear = yearDays.reduce((a, b) => a + b, 0);
                 if (remainingDays >= daysInYear) {
                     remainingDays -= daysInYear;
                     bsYear++;
@@ -289,9 +300,9 @@
                 }
             }
 
-            // Calculate months and days
             while (remainingDays > 0) {
-                const daysInMonth = bsMonths[bsMonth];
+                const yearDays = bsCalendar[bsYear] || bsCalendar[2082];
+                const daysInMonth = yearDays[bsMonth];
                 if (remainingDays >= daysInMonth) {
                     remainingDays -= daysInMonth;
                     bsMonth++;
@@ -313,17 +324,6 @@
                 }
             }
 
-            // Adjust if day exceeds month length
-            const daysInMonth = bsMonths[bsMonth];
-            if (bsDay > daysInMonth) {
-                bsDay -= daysInMonth;
-                bsMonth++;
-                if (bsMonth >= 12) {
-                    bsMonth = 0;
-                    bsYear++;
-                }
-            }
-
             return `${bsYear}-${(bsMonth + 1).toString().padStart(2, '0')}-${bsDay.toString().padStart(2, '0')}`;
         }
 
@@ -339,6 +339,16 @@
             });
         }
 
+        document.getElementById('bankName').addEventListener('change', function() {
+            const bank = this.value;
+            if (bank) {
+                document.getElementById('bankBalanceDiv').style.display = 'block';
+                document.getElementById('bankBalance').value = bankBalances[bank] || '';
+            } else {
+                document.getElementById('bankBalanceDiv').style.display = 'none';
+            }
+        });
+
         document.getElementById('chequeForm').addEventListener('submit', function(e) {
             e.preventDefault();
 
@@ -351,8 +361,15 @@
             const ifsc = document.getElementById('ifsc').value || 'NRB0001234';
             const accountNo = document.getElementById('accountNo').value || '123456789012';
             const chequeNo = document.getElementById('chequeNo').value || '000123';
+            const bankBalance = parseFloat(document.getElementById('bankBalance').value) || 0;
 
-            if (bankName) banks.add(bankName);
+            if (bankName) {
+                banks.add(bankName);
+                bankBalances[bankName] = bankBalance;
+                if (amount > bankBalance) {
+                    alert(`Warning: Cheque amount (${amount} NPR) exceeds bank balance (${bankBalance} NPR) for ${bankName}.`);
+                }
+            }
 
             if (editIndex === null) {
                 cheques.push({ bankName, payee, amount, date, chequeType, ifsc, accountNo, chequeNo });
@@ -363,6 +380,7 @@
 
             this.reset();
             document.getElementById('chequeType').value = 'Bearer';
+            document.getElementById('bankBalanceDiv').style.display = 'none';
             updateBankDropdown();
             renderCheques();
         });
@@ -375,6 +393,7 @@
                 const bsDate = convertADtoBS(cheque.date);
                 const row = document.createElement('tr');
                 row.innerHTML = `
+                    <td><input type="checkbox" class="cheque-select" data-index="${index}"></td>
                     <td>${index + 1}</td>
                     <td>${cheque.bankName}</td>
                     <td>${cheque.payee}</td>
@@ -385,7 +404,7 @@
                     <td>
                         <button class="btn btn-warning btn-sm" onclick="editCheque(${index})">Edit</button>
                         <button class="btn btn-danger btn-sm" onclick="deleteCheque(${index})">Delete</button>
-                        <button class="btn btn-info btn-sm" onclick="selectForPrint(${index})">Print</button>
+                        <button class="btn btn-info btn-sm" onclick="printSingleCheque(${index})">Print</button>
                     </td>
                 `;
                 tbody.appendChild(row);
@@ -403,6 +422,8 @@
             document.getElementById('ifsc').value = cheque.ifsc;
             document.getElementById('accountNo').value = cheque.accountNo;
             document.getElementById('chequeNo').value = cheque.chequeNo;
+            document.getElementById('bankBalanceDiv').style.display = 'block';
+            document.getElementById('bankBalance').value = bankBalances[cheque.bankName] || '';
             editIndex = index;
         }
 
@@ -413,21 +434,72 @@
             renderCheques();
         }
 
-        function selectForPrint(index) {
+        function printSingleCheque(index) {
             const cheque = cheques[index];
             const bsDate = convertADtoBS(cheque.date);
-            document.getElementById('chequePayee').textContent = cheque.chequeType === 'A/c Payee' ? `A/c Payee: ${cheque.payee}` : `Pay: ${cheque.payee}`;
+            document.getElementById('chequePayee').textContent = cheque.chequeType === 'A/c Payee' ? `${cheque.payee}` : `${cheque.payee}`;
             document.getElementById('chequeAmount').textContent = cheque.amount;
             document.getElementById('chequeAmountWords').textContent = numberToWords(cheque.amount);
             document.getElementById('chequeDateBS').textContent = bsDate;
+            printCheque();
         }
 
-        document.getElementById('printBtn').addEventListener('click', function() {
+        document.getElementById('printSelectedBtn').addEventListener('click', function() {
+            const selected = document.querySelectorAll('.cheque-select:checked');
+            if (selected.length === 0) {
+                alert('Please select at least one cheque to print.');
+                return;
+            }
+            selected.forEach(checkbox => {
+                const index = checkbox.dataset.index;
+                printSingleCheque(index);
+            });
+        });
+
+        function printCheque() {
             const printableArea = document.getElementById('printableCheque');
             printableArea.classList.remove('d-none');
             window.print();
             printableArea.classList.add('d-none');
+        }
+
+        document.getElementById('exportPdfBtn').addEventListener('click', function() {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            doc.text('Cheque Records', 10, 10);
+            cheques.forEach((cheque, index) => {
+                const bsDate = convertADtoBS(cheque.date);
+                doc.text(`${index + 1}. ${cheque.bankName} | ${cheque.payee} | ${cheque.amount} NPR | ${cheque.date} | ${bsDate} | ${cheque.chequeType}`, 10, 20 + index * 10);
+            });
+            doc.save('cheque_records.pdf');
         });
+
+        document.getElementById('exportExcelBtn').addEventListener('click', function() {
+            const data = cheques.map((cheque, index) => ({
+                '#': index + 1,
+                Bank: cheque.bankName,
+                Payee: cheque.payee,
+                'Amount (NPR)': cheque.amount,
+                'Date (AD)': cheque.date,
+                'Date (BS)': convertADtoBS(cheque.date),
+                Type: cheque.chequeType
+            }));
+            const ws = XLSX.utils.json_to_sheet(data);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Cheques');
+            XLSX.writeFile(wb, 'cheque_records.xlsx');
+        });
+
+        // Simulated Test Data
+        cheques = [
+            { bankName: 'Nabil Bank', payee: 'John Doe', amount: '5000.50', date: '2025-04-08', chequeType: 'A/c Payee', ifsc: 'NBL0001234', accountNo: '987654321098', chequeNo: '000001' },
+            { bankName: 'Sanima Bank', payee: 'Jane Smith', amount: '10000.75', date: '2025-05-01', chequeType: 'Bearer', ifsc: 'SNB0005678', accountNo: '123456789012', chequeNo: '000002' }
+        ];
+        banks = new Set(cheques.map(c => c.bankName));
+        bankBalances['Nabil Bank'] = 10000;
+        bankBalances['Sanima Bank'] = 15000;
+        updateBankDropdown();
+        renderCheques();
     </script>
 </body>
 </html>
