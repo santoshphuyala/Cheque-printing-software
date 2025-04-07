@@ -42,12 +42,11 @@
             position: fixed;
             top: 0;
             left: 0;
-            width: 8.5in; /* Exact cheque width */
-            height: 3.5in; /* Exact cheque height */
+            width: 8.5in;
+            height: 3.5in;
             background: #fff;
             display: none; /* Hidden by default */
             z-index: 1000;
-            page-break-after: avoid; /* Prevent extra pages */
         }
 
         .cheque {
@@ -57,7 +56,7 @@
             background: #fff;
             font-family: 'Courier New', Courier, monospace;
             position: relative;
-            overflow: hidden; /* Prevent content overflow */
+            overflow: hidden;
         }
 
         .cheque-date {
@@ -112,20 +111,23 @@
 
         @media print {
             @page {
-                size: 8.5in 3.5in; /* Exact cheque size */
+                size: 8.5in 3.5in;
                 margin: 0;
             }
-            body, .container, .card, .table {
-                display: none !important; /* Hide all non-print elements */
+            body * {
+                visibility: hidden; /* Hide everything except print area */
+            }
+            .cheque-print, .cheque-print * {
+                visibility: visible; /* Show cheque content */
             }
             .cheque-print {
-                display: block !important; /* Show only print area */
+                display: block;
                 position: absolute;
                 top: 0;
                 left: 0;
                 width: 8.5in;
                 height: 3.5in;
-                page-break-after: avoid;
+                page-break-after: always; /* Ensure single page per cheque */
                 page-break-before: avoid;
                 page-break-inside: avoid;
             }
@@ -416,7 +418,7 @@
         function printCheque() {
             const printableArea = document.getElementById('printableCheque');
             printableArea.style.display = 'block'; // Show for printing
-            window.print();
+            window.print(); // Trigger print
             printableArea.style.display = 'none'; // Hide after printing
         }
 
