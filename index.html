@@ -42,22 +42,22 @@
             position: fixed;
             top: 0;
             left: 0;
-            width: 100%;
-            height: 100%;
+            width: 8.5in; /* Exact cheque width */
+            height: 3.5in; /* Exact cheque height */
             background: #fff;
-            display: flex;
-            justify-content: center;
-            align-items: center;
+            display: none; /* Hidden by default */
             z-index: 1000;
+            page-break-after: avoid; /* Prevent extra pages */
         }
 
         .cheque {
-            width: 8.5in; /* 8.5 inches */
-            height: 3.5in; /* 3.5 inches */
+            width: 8.5in;
+            height: 3.5in;
             padding: 10px;
             background: #fff;
             font-family: 'Courier New', Courier, monospace;
             position: relative;
+            overflow: hidden; /* Prevent content overflow */
         }
 
         .cheque-date {
@@ -112,24 +112,28 @@
 
         @media print {
             @page {
-                size: 8.5in 3.5in;
+                size: 8.5in 3.5in; /* Exact cheque size */
                 margin: 0;
             }
-            body * {
-                visibility: hidden;
-            }
-            .cheque-print, .cheque-print * {
-                visibility: visible;
+            body, .container, .card, .table {
+                display: none !important; /* Hide all non-print elements */
             }
             .cheque-print {
+                display: block !important; /* Show only print area */
                 position: absolute;
                 top: 0;
                 left: 0;
                 width: 8.5in;
                 height: 3.5in;
+                page-break-after: avoid;
+                page-break-before: avoid;
+                page-break-inside: avoid;
             }
-            .d-none {
-                display: block !important;
+            .cheque {
+                width: 8.5in;
+                height: 3.5in;
+                margin: 0;
+                padding: 10px;
             }
         }
     </style>
@@ -216,7 +220,7 @@
         </div>
 
         <!-- Printable Cheque -->
-        <div id="printableCheque" class="cheque-print d-none">
+        <div id="printableCheque" class="cheque-print">
             <div class="cheque">
                 <span class="cheque-date" id="chequeDate"></span>
                 <span class="cheque-payee" id="chequePayee"></span>
@@ -411,9 +415,9 @@
 
         function printCheque() {
             const printableArea = document.getElementById('printableCheque');
-            printableArea.classList.remove('d-none');
+            printableArea.style.display = 'block'; // Show for printing
             window.print();
-            printableArea.classList.add('d-none');
+            printableArea.style.display = 'none'; // Hide after printing
         }
 
         document.getElementById('exportPdfBtn').addEventListener('click', function() {
